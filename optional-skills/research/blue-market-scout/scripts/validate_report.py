@@ -34,7 +34,7 @@ def is_public_https_syntax(url: object) -> bool:
             return False
         if p.username or p.password or p.port not in (None, 443):
             return False
-        if "%" in p.netloc or re.search(r"[\\x00-\\x1f\\x7f]", url):
+        if "%" in p.netloc or re.search(r"[\x00-\x1f\x7f]", url):
             return False
         try:
             ipaddress.ip_address(host)
