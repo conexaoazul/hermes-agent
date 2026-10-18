@@ -86,6 +86,34 @@ The script produces only aggregate validation status and record counts; it does 
 
 Before prioritizing markets for Conexão Azul Digital, read the **dated, aggregate-only** planning reference `references/market_pilot_2026-10-18.md`. It contains a proposed 100-company research sample and Odoo CRM aggregates, **not a validated addressable-market estimate**. Recheck counts with tenant-scoped read-only MCP access before execution.
 
+## Bidirectional Harvey ↔ Hermes ↔ Odoo Company 360 (draft QA)
+
+A deterministic **no-network** adapter now accompanies this skill:
+
+```python
+from harvey_hermes_odoo_bridge import to_hermes_research_request, to_harvey_feedback
+# Both functions accept sanitized Python dicts and never call external services.
+```
+
+**Direction A (Harvey → Hermes):** `to_hermes_research_request` takes sanitized Harvey's `harvey_scout` observation and returns `blue-harvey-hermes-request-v1`, with owner `company_id`, `correlation_id`, `external_ref`, company-level source URL, and explicit `can_send=false`/`can_write_odoo=false`. A sanitized request is a suggestion for research, not authorization to fetch arbitrary domains.
+
+**Direction B (Hermes → Harvey):** `to_harvey_feedback` combines the original request with a 1-record `blue-market-scout-v1` result; validates exact tenant/correlation/external ref, forbids PII and outbound, and emits `blue-hermes-harvey-feedback-v1`. The reverse feedback **ALWAYS** forces `verified_source=false` even if Hermes reports itself "validated". No change to Harvey's production source-verification gate.
+
+**Odoo Company 360:** optional `blue-odoo-review-context-v1` is issued only by a separately **authenticated, tenant-scoped Odoo read-only RPC** from draft BlueApps19 PR #1193, and may provide basic ICP and general `blue_contact_policy`. It is contextual metadata, not proof of consent for WhatsApp/email. If absent, feedback has `matched=false`.
+
+**n8n:** existing inactive LAB `Smuy1GhkCvCzmHLy` runs synthetic cases; the actual integration of live providers is **not** configured. No server-to-server auth, ingress signature, credentials, running Harvey daemon, scheduled task or production CRM write is provisioned by this skill. The Hermes skill adapter should be invoked through an approved isolated bot/tool runtime, not by copying a model's self-claims into Odoo.
+
+Run offline tests:
+
+```bash
+scripts/run_tests.sh tests/skills/test_harvey_hermes_odoo_bridge.py -q
+```
+
+Release gates: verify public-source access and SSRF, Hermes prompt isolation, tenant scope, authenticated service-to-service transport with least-privilege tokens and replay protections, quotas, legal basis, source provenance, Odoo QA and operator approval. **No sends or writes until all are independently proven.**
+
+Read-only Odoo bridge draft: https://github.com/conexaoazul/BlueApps19/pull/1193
+n8n interface draft: https://github.com/conexaoazul/n8n-conector-ca/pull/1
+
 ## Pitfalls
 
 - Hermes is designed as a personal, single-tenant agent. A shared multi-company deployment must isolate profiles, memory, tool credentials and workflows, and use an external authorization boundary; memory profiles alone are not an Odoo `company_id` security control.
