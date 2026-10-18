@@ -1,0 +1,161 @@
+name: Blue Market Scout — isolated contract QA
+
+on:
+  pull_request:
+    paths:
+      - "optional-skills/research/blue-market-scout/**"
+      - "tests/skills/test_blue_market_scout_skill.py"
+      - "tests/skills/test_harvey_hermes_odoo_bridge.py"
+      - ".github/workflows/blue-market-scout-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review-only-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile validation code
+        run: python -m py_compile optional-skills/research/blue-market-scout/scripts/validate_report.py
+      - name: Offline smoke — never send or write CRM
+        shell: bash
+        run: |
+          python - <<'PY'
+          from copy import deepcopy
+          from datetime import date
+          from importlib import util
+          from pathlib import Path
+          src = Path('optional-skills/research/blue-market-scout/scripts/validate_report.py')
+          spec = util.spec_from_file_location('blue_market_scout', src)
+          mod = util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          report = {
+              'schema_version': 'blue-market-scout-v1',
+              'company_id': 1, 'correlation_id': 'lab-qa-20261018',
+              'records': [{
+                  'external_ref': 'fictional-co-001', 'company_name': 'Empresa Laboratorio',
+                  'icp_vertical': 'industria', 'confidence': 0.87,
+                  'source': 'hermes_market_research', 'enrichment_state': 'validated',
+                  'observed_at': '2026-10-17',
+                  'evidence': [{'url': 'https://example.org/research', 'source_type': 'company_website', 'observed_at': '2026-10-17'}],
+                  'proposed_products': ['odoo'],
+                  'requires_human_approval': True,
+                  'can_send': False, 'can_write_odoo': False
+              }],
+          }
+          def errors(x): return mod.validate_report(x, today=date(2026, 10, 18))
+          assert not errors(report), errors(report)
+          total = 1
+          for field, bad in [('can_send', True), ('can_write_odoo', True), ('requires_human_approval', False), ('enrichment_state', 'dry_run')]:
+              candidate = deepcopy(report)
+              candidate['records'][0][field] = bad
+              assert errors(candidate), field
+              total += 1
+          for bad in ({'invalid': True}, 12, None):
+              candidate = deepcopy(report)
+              candidate['records'][0]['proposed_products'] = [bad]
+              assert 'record[0]:products' in errors(candidate)
+              candidate = deepcopy(report)
+              candidate['records'][0]['evidence'][0]['source_type'] = bad
+              assert 'record[0]:evidence[0]:unsupported_source' in errors(candidate)
+              total += 2
+          for bad_url in ('http://example.org', 'https://169.254.169.254/', 'https://127.0.0.1/', 'https://user:pass@example.org', 'https://postgres.internal'):
+              candidate = deepcopy(report)
+              candidate['records'][0]['evidence'][0]['url'] = bad_url
+              assert errors(candidate), bad_url
+              total += 1
+          candidate = deepcopy(report)
+          candidate['records'][0]['email'] = 'do-not-use@example.org'
+          assert 'report:personal_contact_fields_forbidden' in errors(candidate)
+          total += 1
+          print(f"PASS {total} offline contract scenarios — no secrets, network, messages or CRM")
+          PY
+
+      - name: Bridge — Harvey Hermes Odoo — standalone offline QA
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          mod_path = Path('optional-skills/research/blue-market-scout/scripts/harvey_hermes_odoo_bridge.py')
+          spec = importlib.util.spec_from_file_location('market_bridge', mod_path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          h = {
+            'company_id': 11, 'correlation_id': 'qa-market-20261018',
+            'external_ref': 'company-001', 'company_name': 'Empresa Laboratorio',
+            'origin': 'harvey_scout', 'signal_url': 'https://example.org/company',
+            'verified_source': True, 'can_send': False, 'can_write_odoo': False,
+          }
+          request = module.to_hermes_research_request(h)
+          assert request['direction'] == 'harvey_to_hermes'
+          report = {
+            'schema_version': 'blue-market-scout-v1', 'company_id': 11,
+            'correlation_id': 'qa-market-20261018',
+            'records': [{
+              'external_ref': 'company-001', 'company_name': 'Empresa Laboratorio',
+              'source': 'hermes_market_research', 'confidence': 0.85,
+              'evidence': [{'url': 'https://example.org/company', 'source_type': 'company_website', 'observed_at': '2026-10-17'}],
+              'proposed_products': ['odoo'], 'requires_human_approval': True,
+              'can_send': False, 'can_write_odoo': False,
+            }],
+          }
+          context = {
+            'schema_version':'blue-odoo-review-context-v1',
+            'source':'odoo_company_360_authenticated_readonly',
+            'company_id':11,'profile_id':88,'evidence_verified_for_dispatch':False,
+            'can_send':False,'can_write_odoo':False,
+            'channel_contact_authorized':False, 'signals_validated_for_current_decision':False,
+            'outreach_status':'REVIEW_REQUIRED', 'signal_freshness':'NO_FRESH_SIGNALS',
+            'research_refresh_required':True,
+            'lead':{'linked':True,'lead_id':101,'icp_grade':'a','contact_policy':'manual_only'}
+          }
+          out = module.to_harvey_feedback(request, report, context)
+          assert out['direction'] == 'hermes_to_harvey'
+          assert out['odoo_context']['contact_policy'] == 'manual_only'
+          assert out['odoo_context']['signal_freshness'] == 'NO_FRESH_SIGNALS'
+          assert out['odoo_context']['research_refresh_required'] is True
+          assert out['odoo_context']['channel_contact_authorized'] is False
+          assert out['company_id'] == 11
+          assert out['verified_source'] is False
+          assert out['can_send'] is False and out['can_write_odoo'] is False
+          cases = 1
+          for altered in (
+            dict(report,company_id=22),
+            dict(report,correlation_id='changed-correlation'),
+            dict(report,records=[dict(report['records'][0],external_ref='unlinked')]),
+          ):
+            try:
+              module.to_harvey_feedback(request,altered,context)
+              raise AssertionError('negative case accepted')
+            except ValueError:
+              cases += 1
+          raw_harvey = {
+            'id':'local-harvey-text-id',
+            'external_id':'osm:node/1234',
+            'name':'Empresa Pesquisa Sintetica',
+            'source_url':'https://example.org/company',
+            'phone':'555-555-555',
+            'notes':'do not export person',
+          }
+          upstream = module.harvey_company_to_research_request(
+            raw_harvey, odoo_company_id=11, correlation_id='lab-harvey-upstream-001'
+          )
+          assert upstream['company_id'] == 11
+          assert upstream['external_ref'].startswith('harvey-')
+          assert upstream['source_verification_state'] == 'UNVERIFIED_UPSTREAM_HARVEY_COMPANY'
+          assert '555-555-555' not in str(upstream)
+          assert upstream['can_send'] is False and upstream['can_write_odoo'] is False
+          cases += 1
+          print(f'PASS {cases} offline bridge cases; zero network/CRM writes')
+          PY
