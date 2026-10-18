@@ -115,7 +115,7 @@ def validate_report(report: object, *, today: date | None = None) -> list[str]:
         if not recent_iso(row["observed_at"], now):
             errors.append(f"{prefix}:stale_signal")
         products = row["proposed_products"]
-        if not isinstance(products, list) or len(products) > 5 or any(p not in ALLOWED_PRODUCTS for p in products):
+        if not isinstance(products, list) or len(products) > 5 or any(not isinstance(p, str) or p not in ALLOWED_PRODUCTS for p in products):
             errors.append(f"{prefix}:products")
         ev = row["evidence"]
         if not isinstance(ev, list) or not 1 <= len(ev) <= 10:
@@ -127,7 +127,7 @@ def validate_report(report: object, *, today: date | None = None) -> list[str]:
                 continue
             if not is_public_https_syntax(e["url"]) or not recent_iso(e["observed_at"], now):
                 errors.append(f"{prefix}:evidence[{j}]:invalid_url_or_age")
-            if e["source_type"] not in {"company_website", "pncp_public", "public_news", "public_registry"}:
+            if not isinstance(e["source_type"], str) or e["source_type"] not in {"company_website", "pncp_public", "public_news", "public_registry"}:
                 errors.append(f"{prefix}:evidence[{j}]:unsupported_source")
     return errors
 

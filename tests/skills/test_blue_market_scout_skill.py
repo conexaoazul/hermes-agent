@@ -92,3 +92,20 @@ def test_company_isolation_scope(sample):
     twin = {**sample, "company_id": 22}
     assert validate(sample) == []
     assert validate(twin) == []
+
+
+@pytest.mark.parametrize("bad_value", [{"role": "unexpected"}, 17, None])
+def test_reject_malformed_product_types_without_exception(sample, bad_value):
+    sample["records"][0]["proposed_products"] = [bad_value]
+    assert "record[0]:products" in validate(sample)
+
+
+@pytest.mark.parametrize("bad_value", [{"role": "unexpected"}, 17, None])
+def test_reject_malformed_source_type_without_exception(sample, bad_value):
+    sample["records"][0]["evidence"][0]["source_type"] = bad_value
+    assert "record[0]:evidence[0]:unsupported_source" in validate(sample)
+
+
+def test_valid_https_url_with_x_is_not_rejected(sample):
+    sample["records"][0]["evidence"][0]["url"] = "https://example.org/valid"
+    assert validate(sample) == []
