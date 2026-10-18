@@ -115,11 +115,17 @@ jobs:
             'source':'odoo_company_360_authenticated_readonly',
             'company_id':11,'profile_id':88,'evidence_verified_for_dispatch':False,
             'can_send':False,'can_write_odoo':False,
+            'channel_contact_authorized':False, 'signals_validated_for_current_decision':False,
+            'outreach_status':'REVIEW_REQUIRED', 'signal_freshness':'NO_FRESH_SIGNALS',
+            'research_refresh_required':True,
             'lead':{'linked':True,'lead_id':101,'icp_grade':'a','contact_policy':'manual_only'}
           }
           out = module.to_harvey_feedback(request, report, context)
           assert out['direction'] == 'hermes_to_harvey'
           assert out['odoo_context']['contact_policy'] == 'manual_only'
+          assert out['odoo_context']['signal_freshness'] == 'NO_FRESH_SIGNALS'
+          assert out['odoo_context']['research_refresh_required'] is True
+          assert out['odoo_context']['channel_contact_authorized'] is False
           assert out['company_id'] == 11
           assert out['verified_source'] is False
           assert out['can_send'] is False and out['can_write_odoo'] is False

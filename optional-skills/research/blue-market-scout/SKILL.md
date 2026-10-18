@@ -135,3 +135,9 @@ n8n interface draft: https://github.com/conexaoazul/n8n-conector-ca/pull/1
 - Validate the example payload offline.
 - Verify every output is `can_send=false` and `can_write_odoo=false`; no network or Odoo SDK in the helper.
 - Before any future production adapter: explicitly test tenant isolation, suppression lists, provenance and per-customer model cost accounting; block on missing evidence.
+
+### Freshness & general commercial policy are not channel authorization
+
+The authenticated Odoo Company 360 bridge now returns only signals computed within **30 days** by default; dated signals are metadata, not independently verified public facts. Actual `company_id=1` data showed 238 signals, but only 1 within the last 30 days, and 26 CRM-linked leads all `manual_only`. Hermes feedback carries `signal_freshness` and `research_refresh_required` but **always** sets `channel_contact_authorized=false`, `can_send=false` and `can_write_odoo=false`. Forged `channel_contact_authorized=true`, `signals_validated_for_current_decision=true` or inconsistent freshness claims are rejected. Refresh by research requires independent budget/approval; never mass-contact the 26 leads automatically.
+
+Draft Odoo code: https://github.com/conexaoazul/BlueApps19/pull/1193

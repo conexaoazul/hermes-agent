@@ -183,21 +183,37 @@ def to_harvey_feedback(request: dict[str, Any], report: dict[str, Any],
         raise ValueError("INVALID_PRODUCTS")
     if not isinstance(row.get("confidence"), (float, int)) or isinstance(row.get("confidence"), bool) or not 0 <= row["confidence"] <= 1:
         raise ValueError("INVALID_CONFIDENCE")
-    context = {"matched": False, "profile_id": None, "icp_grade": "unknown", "contact_policy": "unverified"}
+    context = {"matched": False, "profile_id": None, "icp_grade": "unknown", "contact_policy": "unverified",
+               "signal_freshness": "NO_ODOO_CONTEXT", "research_refresh_required": True,
+               "channel_contact_authorized": False}
     if odoo_context is not None:
         # Odoo 360 data must arrive from a separately authenticated RPC, not from Hermes.
         if not isinstance(odoo_context, dict) or odoo_context.get("schema_version") != "blue-odoo-review-context-v1" or odoo_context.get("source") != "odoo_company_360_authenticated_readonly" or odoo_context.get("company_id") != tenant:
             raise ValueError("UNTRUSTED_ODOO_CONTEXT")
-        if odoo_context.get("can_send") is not False or odoo_context.get("can_write_odoo") is not False or odoo_context.get("evidence_verified_for_dispatch") is not False:
+        if (odoo_context.get("can_send") is not False or
+            odoo_context.get("can_write_odoo") is not False or
+            odoo_context.get("evidence_verified_for_dispatch") is not False or
+            odoo_context.get("channel_contact_authorized") is not False or
+            odoo_context.get("signals_validated_for_current_decision") is not False or
+            odoo_context.get("outreach_status") != "REVIEW_REQUIRED"):
             raise ValueError("ODOO_CONTEXT_ESCALATION")
         pid = odoo_context.get("profile_id")
         if not isinstance(pid, int) or isinstance(pid, bool) or pid < 1:
             raise ValueError("INVALID_PROFILE_ID")
+        if odoo_context.get("signal_freshness") not in ("FRESH", "NO_FRESH_SIGNALS"):
+            raise ValueError("BAD_ODOO_FRESHNESS")
+        if not isinstance(odoo_context.get("research_refresh_required"), bool):
+            raise ValueError("BAD_ODOO_REFRESH_STATE")
+        if (odoo_context["signal_freshness"] == "NO_FRESH_SIGNALS") != odoo_context["research_refresh_required"]:
+            raise ValueError("INCONSISTENT_ODOO_FRESHNESS")
         linked = odoo_context.get("lead") or {}
         context = {
             "matched": True, "profile_id": pid,
             "icp_grade": linked.get("icp_grade", "unknown") if linked.get("linked") is True else "unknown",
             "contact_policy": linked.get("contact_policy", "unverified") if linked.get("linked") is True else "unverified",
+            "signal_freshness": odoo_context.get("signal_freshness", "UNKNOWN"),
+            "research_refresh_required": odoo_context.get("research_refresh_required") is True,
+            "channel_contact_authorized": False,
         }
     return {
         "schema_version": "blue-hermes-harvey-feedback-v1",
