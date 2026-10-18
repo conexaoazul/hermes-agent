@@ -134,5 +134,22 @@ jobs:
               raise AssertionError('negative case accepted')
             except ValueError:
               cases += 1
+          raw_harvey = {
+            'id':'local-harvey-text-id',
+            'external_id':'osm:node/1234',
+            'name':'Empresa Pesquisa Sintetica',
+            'source_url':'https://example.org/company',
+            'phone':'555-555-555',
+            'notes':'do not export person',
+          }
+          upstream = module.harvey_company_to_research_request(
+            raw_harvey, odoo_company_id=11, correlation_id='lab-harvey-upstream-001'
+          )
+          assert upstream['company_id'] == 11
+          assert upstream['external_ref'].startswith('harvey-')
+          assert upstream['source_verification_state'] == 'UNVERIFIED_UPSTREAM_HARVEY_COMPANY'
+          assert '555-555-555' not in str(upstream)
+          assert upstream['can_send'] is False and upstream['can_write_odoo'] is False
+          cases += 1
           print(f'PASS {cases} offline bridge cases; zero network/CRM writes')
           PY
