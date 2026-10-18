@@ -5,6 +5,7 @@ on:
     paths:
       - "optional-skills/research/blue-market-scout/**"
       - "tests/skills/test_blue_market_scout_skill.py"
+      - "tests/skills/test_harvey_hermes_odoo_bridge.py"
       - ".github/workflows/blue-market-scout-qa.yml"
   workflow_dispatch:
 
@@ -78,4 +79,60 @@ jobs:
           assert 'report:personal_contact_fields_forbidden' in errors(candidate)
           total += 1
           print(f"PASS {total} offline contract scenarios — no secrets, network, messages or CRM")
+          PY
+
+      - name: Bridge — Harvey Hermes Odoo — standalone offline QA
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          mod_path = Path('optional-skills/research/blue-market-scout/scripts/harvey_hermes_odoo_bridge.py')
+          spec = importlib.util.spec_from_file_location('market_bridge', mod_path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          h = {
+            'company_id': 11, 'correlation_id': 'qa-market-20261018',
+            'external_ref': 'company-001', 'company_name': 'Empresa Laboratorio',
+            'origin': 'harvey_scout', 'signal_url': 'https://example.org/company',
+            'verified_source': True, 'can_send': False, 'can_write_odoo': False,
+          }
+          request = module.to_hermes_research_request(h)
+          assert request['direction'] == 'harvey_to_hermes'
+          report = {
+            'schema_version': 'blue-market-scout-v1', 'company_id': 11,
+            'correlation_id': 'qa-market-20261018',
+            'records': [{
+              'external_ref': 'company-001', 'company_name': 'Empresa Laboratorio',
+              'source': 'hermes_market_research', 'confidence': 0.85,
+              'evidence': [{'url': 'https://example.org/company', 'source_type': 'company_website', 'observed_at': '2026-10-17'}],
+              'proposed_products': ['odoo'], 'requires_human_approval': True,
+              'can_send': False, 'can_write_odoo': False,
+            }],
+          }
+          context = {
+            'schema_version':'blue-odoo-review-context-v1',
+            'source':'odoo_company_360_authenticated_readonly',
+            'company_id':11,'profile_id':88,'evidence_verified_for_dispatch':False,
+            'can_send':False,'can_write_odoo':False,
+            'lead':{'linked':True,'lead_id':101,'icp_grade':'a','contact_policy':'manual_only'}
+          }
+          out = module.to_harvey_feedback(request, report, context)
+          assert out['direction'] == 'hermes_to_harvey'
+          assert out['odoo_context']['contact_policy'] == 'manual_only'
+          assert out['company_id'] == 11
+          assert out['verified_source'] is False
+          assert out['can_send'] is False and out['can_write_odoo'] is False
+          cases = 1
+          for altered in (
+            dict(report,company_id=22),
+            dict(report,correlation_id='changed-correlation'),
+            dict(report,records=[dict(report['records'][0],external_ref='unlinked')]),
+          ):
+            try:
+              module.to_harvey_feedback(request,altered,context)
+              raise AssertionError('negative case accepted')
+            except ValueError:
+              cases += 1
+          print(f'PASS {cases} offline bridge cases; zero network/CRM writes')
           PY
