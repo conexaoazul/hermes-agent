@@ -84,6 +84,8 @@ The script produces only aggregate validation status and record counts; it does 
 7. **Human review:** Hand off the sanitized report to the review-only n8n contract `Smuy1GhkCvCzmHLy` **only after** a separately developed authenticated ingress exists. The current n8n LAB is manual and synthetic, and is **not** a production import endpoint.
 8. **Governance:** CRM creation, outbound messaging, Odoo quotas, opt-out and ROI remain solely in Blue Company Intelligence, Blue Lead Outreach Orchestrator and approved n8n gates. Market research does not grant contact or send permission.
 
+Before prioritizing markets for Conexão Azul Digital, read the **dated, aggregate-only** planning reference `references/market_pilot_2026-10-18.md`. It contains a proposed 100-company research sample and Odoo CRM aggregates, **not a validated addressable-market estimate**. Recheck counts with tenant-scoped read-only MCP access before execution.
+
 ## Pitfalls
 
 - Hermes is designed as a personal, single-tenant agent. A shared multi-company deployment must isolate profiles, memory, tool credentials and workflows, and use an external authorization boundary; memory profiles alone are not an Odoo `company_id` security control.
