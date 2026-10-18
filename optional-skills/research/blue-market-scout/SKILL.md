@@ -88,6 +88,13 @@ Before prioritizing markets for Conexão Azul Digital, read the **dated, aggrega
 
 ## Bidirectional Harvey ↔ Hermes ↔ Odoo Company 360 (draft QA)
 
+### Upstream Harvey compatibility
+
+The upstream Harvey `harvey.models.company.Company` contains `id` (SQLite TEXT), `external_id` (e.g. `osm:node/12345`), `name`, `source_url`, `website`, `phone`, `notes`, `description`, and signal lists. **Do not treat Harvey's SQLite `Company.id` or `Prospect.company_id` as Odoo's `res.company.id`.** Use `harvey_company_to_research_request(harvey_company, odoo_company_id=AUTHORIZED_TENANT, correlation_id=...)`; it chooses a stable hashed provider ID and exports only company name, permitted public source URL and research flags, dropping phone/notes and all contact/prospect CSV data. Provider source identity is **unverified** until independently attested.
+
+Do not connect the upstream Harvey SMTP/IMAP/Instanly outbox or execute `harvey run` on shared production resources; this integration is company-research-only. Its deployment as a separate container must disable outbound credentials, select allowed data sources, and enforce tenant identity externally.
+
+
 A deterministic **no-network** adapter now accompanies this skill:
 
 ```python

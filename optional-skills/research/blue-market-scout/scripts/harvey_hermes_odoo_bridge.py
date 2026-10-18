@@ -65,6 +65,58 @@ def _safe_public_url(value: Any) -> bool:
         return False
 
 
+def harvey_company_to_research_request(
+    harvey_company: dict[str, Any], *, odoo_company_id: int, correlation_id: str
+) -> dict[str, Any]:
+    """Adapt REAL upstream harvey.models.company.Company to a safe research-only request.
+
+    Upstream Harvey's "company_id" is a SQLite TEXT foreign key, NOT an Odoo
+    tenant ID. The Odoo owning tenant must be supplied separately by the
+    authenticated orchestration layer. Company.phone/notes/description and
+    contact/prospect CSV records are NEVER exported to this bridge.
+    """
+    import hashlib
+    known = {
+        "id", "name", "domain", "website", "description", "industry",
+        "company_size", "location", "phone", "source", "source_url",
+        "external_id", "notes", "tech_stack", "signals",
+        "created_at", "updated_at",
+    }
+    if not isinstance(harvey_company, dict) or set(harvey_company) - known:
+        raise ValueError("NOT_AN_UPSTREAM_HARVEY_COMPANY_RECORD")
+    tenant = _tenant(odoo_company_id)
+    correlation = _id(correlation_id, CODE)
+    name = harvey_company.get("name")
+    if not isinstance(name, str) or not 4 <= len(name) <= 160:
+        raise ValueError("INVALID_COMPANY_NAME")
+    url = harvey_company.get("source_url") or harvey_company.get("website")
+    if not _safe_public_url(url):
+        raise ValueError("UNSAFE_UPSTREAM_HARVEY_SOURCE_URL")
+    basis = (
+        harvey_company.get("external_id") or harvey_company.get("domain")
+        or harvey_company.get("id")
+    )
+    if not isinstance(basis, str) or not 4 <= len(basis) <= 300:
+        raise ValueError("MISSING_STABLE_HARVEY_IDENTITY")
+    # Stable per-tenant provider identity. No name, phone or person data in ID.
+    stable = hashlib.sha256((str(tenant) + ":" + basis).encode("utf-8")).hexdigest()[:24]
+    return {
+        "schema_version": "blue-harvey-hermes-request-v1",
+        "direction": "harvey_to_hermes",
+        "company_id": tenant,
+        "correlation_id": correlation,
+        "external_ref": "harvey-" + stable,
+        "company_name": name,
+        "evidence_url": url,
+        "requested_operation": "research_public_company_only",
+        "evidence_verified_for_dispatch": False,
+        "source_verification_state": "UNVERIFIED_UPSTREAM_HARVEY_COMPANY",
+        "requires_human_approval": True,
+        "can_send": False,
+        "can_write_odoo": False,
+    }
+
+
 def to_hermes_research_request(harvey: dict[str, Any]) -> dict[str, Any]:
     """A trusted n8n operator still has to authorize the *source* outside this code."""
     _dict_keys(harvey, ALLOWED_HARVEY)

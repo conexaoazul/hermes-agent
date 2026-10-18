@@ -113,3 +113,50 @@ def test_malformed_and_personal_contacts_fail_closed():
     bad=hermes();bad["records"][0]["proposed_products"]=[{"value":"odoo"}]
     with pytest.raises(ValueError):
         bridge.to_harvey_feedback(req,bad)
+
+
+def test_upstream_harvey_company_text_id_does_not_become_odoo_tenant():
+    raw={
+        "id":"harvey-local-uuid-0001",
+        "name":"Empresa de Teste Alpha",
+        "domain":"empresa.example.org",
+        "website":"https://empresa.example.org",
+        "source_url":"https://empresa.example.org/evidence",
+        "external_id":"osm:node/12345",
+        "source":"osm",
+        "phone":"+55 11 99999-9999",
+        "notes":"Email pessoal deve ser descartado: private@example.org",
+        "description":"Descricao nao auditada",
+        "signals":[{"type":"hiring","detail":"internal opinion"}],
+    }
+    req=bridge.harvey_company_to_research_request(
+        raw,odoo_company_id=11,correlation_id="lab-upstream-company-0001"
+    )
+    assert req["company_id"]==11
+    assert req["direction"]=="harvey_to_hermes"
+    assert req["external_ref"].startswith("harvey-")
+    assert req["source_verification_state"]=="UNVERIFIED_UPSTREAM_HARVEY_COMPANY"
+    assert req["can_send"] is False and req["can_write_odoo"] is False
+    assert "+55" not in str(req) and "private@example.org" not in str(req)
+    again=bridge.harvey_company_to_research_request(
+        raw,odoo_company_id=11,correlation_id="lab-upstream-company-0002"
+    )
+    assert again["external_ref"]==req["external_ref"]
+
+
+def test_upstream_harvey_requires_operator_scoped_tenant():
+    raw={"id":"local-company-1", "name":"Empresa Teste",
+         "source_url":"https://example.org/signal"}
+    with pytest.raises(ValueError):
+        bridge.harvey_company_to_research_request(
+            raw,odoo_company_id="11",correlation_id="lab-test-001"
+        )
+    with pytest.raises(ValueError):
+        bridge.harvey_company_to_research_request(
+            raw,odoo_company_id=11,correlation_id="bad correlation with spaces"
+        )
+    raw["source_url"]="https://169.254.169.254/latest"
+    with pytest.raises(ValueError):
+        bridge.harvey_company_to_research_request(
+            raw,odoo_company_id=11,correlation_id="lab-test-001"
+        )
